@@ -1,0 +1,35 @@
+# Copy this to ~/.config/agent-hass-hook/config.toml and edit.
+# Run install.sh for interactive setup instead of editing by hand.
+
+[ha]
+url = "http://192.168.1.100:8123"
+# Long-lived access token from HA: Profile -> Security -> Long-Lived Access Tokens
+token = "REPLACE_WITH_YOUR_HA_TOKEN"
+# Set to false for self-signed certs.
+verify_ssl = true
+
+# Timeouts in milliseconds. Defaults shown.
+[timeouts]
+connect_ms = 300
+read_ms = 2000
+
+# Circuit breaker: skip HA calls for `open_duration_sec` after `failure_threshold`
+# consecutive failures. Prevents HA outages from slowing Claude Code's responsiveness.
+[circuit_breaker]
+failure_threshold = 3
+open_duration_sec = 300
+
+# Actions to run when Claude Code's Stop event fires. Array of HA service calls.
+# Add more entries (each starting with [[on_stop]]) to fire multiple actions.
+[[on_stop]]
+service = "light.turn_on"
+data = { entity_id = "light.xiaomi_monitor_lamp_REPLACE" }
+
+# Examples for inspiration (uncomment and edit):
+# [[on_stop]]
+# service = "notify.mobile_app_my_phone"
+# data = { title = "Claude finished", message = "Task complete" }
+#
+# [[on_stop]]
+# service = "script.celebrate"
+# data = {}

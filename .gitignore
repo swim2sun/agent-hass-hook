@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local config we'd never want to commit
+config.toml
+*.token
+.env
