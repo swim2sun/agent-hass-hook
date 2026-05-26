@@ -116,6 +116,16 @@ class TestHAClient(unittest.TestCase):
                 connect_ms=300, read_ms=2000,
             )
 
+    def test_url_path_prefix_is_preserved(self):
+        # Reverse-proxied HA at /homeassistant must route to /homeassistant/api/...
+        with mock_ha(status=200) as (url, srv):
+            r = call_service(
+                url + "/homeassistant", "tok", "light.turn_on", {"entity_id": "x"},
+                connect_ms=500, read_ms=2000,
+            )
+        self.assertTrue(r.ok)
+        self.assertEqual(srv.last_path, "/homeassistant/api/services/light/turn_on")
+
 
 if __name__ == "__main__":
     unittest.main()

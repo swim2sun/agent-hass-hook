@@ -141,7 +141,11 @@ class TestMain(unittest.TestCase):
             log = (tmp / "state" / "hook.log").read_text()
             self.assertIn("breaker_open", log)
 
-    def test_env_disable_skips_main(self):
+    def test_env_disable_does_not_short_circuit_main(self):
+        # AGENT_HASS_HOOK_DISABLE is handled by the bash adapter before main()
+        # is even invoked; main() itself doesn't read it. This documents the
+        # contract — the e2e test (tests/test_e2e.sh scenario 2) covers the
+        # adapter-level disable behavior end-to-end.
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             with mock_ha() as (url, srv):
@@ -149,6 +153,18 @@ class TestMain(unittest.TestCase):
                 stdin = json.dumps({"cwd": str(tmp)})
                 main(["on_stop"], stdin, {"AGENT_HASS_HOOK_DISABLE": "1"}, paths)
             self.assertEqual(srv.last_path, "/api/services/light/turn_on")
+
+    def test_three_failures_set_tripped_at(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock_ha(status=500) as (url, _):
+                paths = make_paths(tmp, url)
+                stdin = json.dumps({"cwd": str(tmp)})
+                for _ in range(3):
+                    main(["on_stop"], stdin, {}, paths)
+            state = json.loads((tmp / "state" / "breaker.json").read_text())
+            self.assertEqual(state["consecutive_failures"], 3)
+            self.assertIsNotNone(state["tripped_at"])
 
 
 if __name__ == "__main__":

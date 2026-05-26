@@ -43,7 +43,10 @@ def call_service(
         raise ValueError(f"unsupported URL scheme: {url!r}")
     host = parsed.hostname
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    path = f"/api/services/{domain}/{svc}"
+    # Preserve any path prefix from the URL (HA can sit behind a reverse proxy
+    # at e.g. https://example.com/homeassistant).
+    prefix = parsed.path.rstrip("/")
+    path = f"{prefix}/api/services/{domain}/{svc}"
 
     body = json.dumps(data).encode("utf-8")
     headers = {

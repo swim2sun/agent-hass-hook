@@ -87,53 +87,80 @@ else
         read -r -p "Entity ID of the light (e.g. light.xiaomi_monitor_lamp): " ENTITY_ID
         [[ -n "$ENTITY_ID" ]] || err "Entity ID is required."
 
-        umask 077
-        cat > "$CONFIG_PATH" <<EOF
-[ha]
-url = "$HA_URL"
-token = "$HA_TOKEN"
-verify_ssl = true
-
-[timeouts]
-connect_ms = 300
-read_ms = 2000
-
-[circuit_breaker]
-failure_threshold = 3
-open_duration_sec = 300
-
-[[on_stop]]
-service = "light.turn_on"
-data = { entity_id = "$ENTITY_ID" }
-EOF
-        chmod 600 "$CONFIG_PATH"
+        # Write the config from Python so token escaping and chmod are handled
+        # safely (no shell quoting pitfalls, no token in any subprocess argv/env).
+        # Token comes in via stdin; only Python sees it.
+        printf '%s' "$HA_TOKEN" | python3 - "$CONFIG_PATH" "$HA_URL" "$ENTITY_ID" <<'PYEOF'
+import json, os, sys
+cfg_path, ha_url, entity = sys.argv[1:4]
+token = sys.stdin.read()
+def s(v): return json.dumps(v)  # TOML basic-string escaping == JSON's for these values
+content = (
+    f"[ha]\n"
+    f"url = {s(ha_url)}\n"
+    f"token = {s(token)}\n"
+    f"verify_ssl = true\n\n"
+    f"[timeouts]\nconnect_ms = 300\nread_ms = 2000\n\n"
+    f"[circuit_breaker]\nfailure_threshold = 3\nopen_duration_sec = 300\n\n"
+    f"[[on_stop]]\n"
+    f'service = "light.turn_on"\n'
+    f"data = {{ entity_id = {s(entity)} }}\n"
+)
+old_umask = os.umask(0o077)
+try:
+    fd = os.open(cfg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+finally:
+    os.umask(old_umask)
+PYEOF
+        # Drop the token from this shell's memory now.
+        unset HA_TOKEN
         info "Wrote $CONFIG_PATH (chmod 600)"
     fi
 fi
 
-# --- 4. Connectivity test
+# --- 4. Connectivity test (done in Python; token never enters argv/env)
 if [[ "$SKIP_TEST" == "1" ]]; then
     info "Skipping connectivity test (--skip-test)"
 else
     info "Testing HA connectivity..."
-    eval "$(python3 -c "
-import tomllib, shlex
-with open('$CONFIG_PATH', 'rb') as f:
+    if ! python3 - "$CONFIG_PATH" <<'PYEOF'
+import sys, tomllib, urllib.request, urllib.error, ssl
+cfg_path = sys.argv[1]
+with open(cfg_path, "rb") as f:
     c = tomllib.load(f)
-print(f'CFG_URL={shlex.quote(c[\"ha\"][\"url\"])}')
-print(f'CFG_TOKEN={shlex.quote(c[\"ha\"][\"token\"])}')
-print(f'CFG_ENTITY={shlex.quote(c[\"on_stop\"][0][\"data\"][\"entity_id\"])}')
-")"
+url = c["ha"]["url"].rstrip("/")
+token = c["ha"]["token"]
+entity = c["on_stop"][0]["data"]["entity_id"]
+verify = c["ha"].get("verify_ssl", True)
+ctx = None if verify else ssl._create_unverified_context()
 
-    if ! curl -fsS -m 5 -H "Authorization: Bearer $CFG_TOKEN" "$CFG_URL/api/" >/dev/null; then
-        err "Failed to reach $CFG_URL/api/ — check URL and token."
-    fi
-    info "✓ API reachable; token valid"
+def call(path):
+    req = urllib.request.Request(url + path, headers={"Authorization": f"Bearer {token}"})
+    return urllib.request.urlopen(req, timeout=5, context=ctx)
 
-    if ! curl -fsS -m 5 -H "Authorization: Bearer $CFG_TOKEN" "$CFG_URL/api/states/$CFG_ENTITY" >/dev/null; then
-        err "Entity '$CFG_ENTITY' not found in HA — check the entity_id."
+try:
+    call("/api/")
+except urllib.error.HTTPError as e:
+    sys.exit(f"  ✗ HA API check failed: HTTP {e.code} — check URL and token")
+except (urllib.error.URLError, OSError) as e:
+    sys.exit(f"  ✗ HA API check failed: {e}")
+print("  ✓ API reachable; token valid")
+
+try:
+    call(f"/api/states/{entity}")
+except urllib.error.HTTPError as e:
+    if e.code == 404:
+        sys.exit(f"  ✗ Entity {entity!r} not found in HA — check the entity_id")
+    sys.exit(f"  ✗ Entity check failed: HTTP {e.code}")
+except (urllib.error.URLError, OSError) as e:
+    sys.exit(f"  ✗ Entity check failed: {e}")
+print(f"  ✓ Entity {entity} exists")
+PYEOF
+    then
+        err "Connectivity test failed (see above)."
     fi
-    info "✓ Entity $CFG_ENTITY exists"
 fi
 
 # --- 5. Register hook in ~/.claude/settings.json
