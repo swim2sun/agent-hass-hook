@@ -125,6 +125,8 @@ for i, s in enumerate(lights, 1):
     fn = a.get("friendly_name", "")
     print(f"  {i:2}. {s['entity_id']:42} [{s['state']}] {fn}")
     lines.append(f"{i}\t{s['entity_id']}\t{1 if ct else 0}\t{mn}\t{mx}")
+if not lights:
+    print("  (no light.* entities found — you can still type an entity_id manually)")
 open(mapfile, "w").write("\n".join(lines))
 PYEOF
 
@@ -154,7 +156,7 @@ PYEOF
     # --- 6. Render config + verify entity + register events (Python; token via stdin) ---
     printf '%s' "$HA_TOKEN" | PYTHONPATH="$INSTALL_DIR" python3 - \
         "$CONFIG_PATH" "$HOOK_CMD" "$SETTINGS" "$HA_URL" "$ENTITY" "$PRESET" "$WARM" "$COOL" "$INSTALL_DIR" <<'PYEOF'
-import json, os, sys, urllib.request, urllib.error
+import json, os, sys, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 from core.presets import render
 
@@ -165,7 +167,7 @@ EVENT_MAP = {"on_stop": "Stop", "on_user_prompt_submit": "UserPromptSubmit"}
 def jstr(v): return json.dumps(v)  # TOML basic-string escaping == JSON's here
 
 # Verify entity exists (connectivity already checked in discovery).
-req = urllib.request.Request(url + f"/api/states/{entity}", headers={"Authorization": f"Bearer {token}"})
+req = urllib.request.Request(url + "/api/states/" + urllib.parse.quote(entity), headers={"Authorization": f"Bearer {token}"})
 try:
     urllib.request.urlopen(req, timeout=5)
     print(f"  entity {entity} exists")
@@ -180,6 +182,8 @@ if preset == "D":
     events = render("A", entity)  # sensible default to register both events
     body = example.read_text()
     body = body.replace("REPLACE_URL", url).replace("REPLACE_TOKEN", token)
+    if "REPLACE_URL" in body or "REPLACE_TOKEN" in body:
+        sys.exit("  DIY config error: config.example.toml is missing REPLACE_URL/REPLACE_TOKEN markers")
     header = "# DIY: starter config. Edit the [[on_*]] tables below freely.\n"
     content = header + body
 else:
@@ -204,6 +208,7 @@ else:
 um = os.umask(0o077)
 try:
     fd = os.open(cfg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # force perms even if config.toml pre-existed with looser mode
     with os.fdopen(fd, "w") as f:
         f.write(content)
 finally:
