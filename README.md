@@ -2,7 +2,7 @@
 
 Make Home Assistant your physical-world notification channel for AI coding agents. When Claude Code finishes a task, your light turns on (or any HA service runs).
 
-**MVP**: Claude Code `Stop` event → call any configured HA service. Default config turns on a light. Adding more AI tools (Cursor, Codex, etc.) or more events (`on_subagent_stop`, etc.) is a matter of adding adapters / config entries — the core stays the same.
+Claude Code events (`Stop`, `UserPromptSubmit`) → call any configured HA service. The core is a generic `event → actions` dispatcher; "behavior modes" are just config presets the installer expands (see [Behavior modes](#behavior-modes)). Adding more AI tools (Cursor, Codex, etc.) or more events is a matter of adding adapters / config entries — the core stays the same.
 
 ## Why use this instead of...
 
@@ -14,7 +14,6 @@ Make Home Assistant your physical-world notification channel for AI coding agent
 
 - Linux or macOS
 - Python 3.11+ (uses stdlib `tomllib`)
-- `jq` and `curl` (for the install script)
 - Home Assistant with at least one entity you want to control
 - A long-lived access token (HA UI: Profile → Security → Long-Lived Access Tokens)
 
@@ -26,28 +25,61 @@ cd agent-hass-hook
 ./install.sh
 ```
 
-You'll be prompted for HA URL, token, and the entity ID of your target device. The installer will:
+The installer is **jq-free** (Python-only) and guides you through setup. It will:
 
 1. Copy files to `~/.local/share/agent-hass-hook/`
-2. Write `~/.config/agent-hass-hook/config.toml` (mode 600)
-3. Verify the token and entity exist
-4. Add a `Stop` hook entry to `~/.claude/settings.json`
+2. Prompt for HA URL + token, verify connectivity, and **list your lights** so you can pick a device by number (or type an entity ID)
+3. Let you pick a **behavior preset** (A, C, or DIY — see [Behavior modes](#behavior-modes))
+4. Write `~/.config/agent-hass-hook/config.toml` (mode 600) and verify the chosen entity exists
+5. Register the hook entries for every event the preset uses in `~/.claude/settings.json` (e.g. `Stop` and `UserPromptSubmit`)
 
 **Development install** (no copy; hook points at the repo): `./install.sh --dev`
 
 **Skip prompts**: `./install.sh --no-config --skip-test` (assumes config is already in place)
 
+## Behavior modes
+
+A "mode" is just a config template the installer expands into the generic
+`event → actions` model below. The runtime knows nothing about modes — it only
+dispatches the actions configured for the event it's invoked with. The installer
+offers these presets:
+
+- **Preset A — work-off / done-on (default).** Light turns **off** while you're
+  working (`on_user_prompt_submit` → `light.turn_off`) and back **on** when
+  Claude finishes (`on_stop` → `light.turn_on`).
+- **Preset C — color-temp state.** Light goes **warm/dim** while working
+  (`on_user_prompt_submit` → `light.turn_on` with `color_temp_kelvin` = warm,
+  `brightness_pct = 50`) and **cool/bright** when done (`on_stop` →
+  `light.turn_on` with `color_temp_kelvin` = cool, `brightness_pct = 100`).
+  Requires a device that supports `color_temp`; the installer falls back to
+  preset A if yours doesn't.
+- **DIY.** Writes a commented `config.toml` you edit by hand.
+
 ## Configuration
 
-Stored at `~/.config/agent-hass-hook/config.toml`. See `config.example.toml` for the full schema. Most fields have sensible defaults; the required ones are `[ha].url`, `[ha].token`, and at least one `[[on_stop]]` entry.
+Stored at `~/.config/agent-hass-hook/config.toml`. See `config.example.toml` for
+the full schema. Most fields have sensible defaults; the required ones are
+`[ha].url`, `[ha].token`, and at least one `[[on_<event>]]` entry.
 
-The `[[on_stop]]` array fires every action when Claude Code's `Stop` event happens. Examples:
+The config is an **event → actions map**. Each `[[on_<event>]]` table is one HA
+service call; repeat a table to fire multiple actions for the same event. The
+supported Claude Code events are:
+
+- `[[on_user_prompt_submit]]` — fires when you submit a prompt (Claude starts working).
+- `[[on_stop]]` — fires when Claude finishes responding.
 
 ```toml
+# Off while working...
+[[on_user_prompt_submit]]
+service = "light.turn_off"
+data = { entity_id = "light.xiaomi_monitor_lamp" }
+
+# ...on when done.
 [[on_stop]]
 service = "light.turn_on"
 data = { entity_id = "light.xiaomi_monitor_lamp" }
 
+# Multiple actions per event — just repeat the table:
 [[on_stop]]
 service = "notify.mobile_app_my_phone"
 data = { title = "Claude done", message = "Task complete" }
@@ -56,6 +88,9 @@ data = { title = "Claude done", message = "Task complete" }
 service = "script.celebrate_done"
 data = {}
 ```
+
+An event with no configured actions is a silent no-op. The circuit breaker is
+shared across all events.
 
 ## Environment variables
 
@@ -113,7 +148,7 @@ See `docs/adding-new-adapter.md`.
 
 ## Architecture
 
-- **`adapters/<tool>/`** — bash entry points specific to each AI tool's hook system
+- **`adapters/<tool>/`** — bash entry points specific to each AI tool's hook system. For Claude Code, `hook.sh <event>` is the generic dispatcher (e.g. `hook.sh on_stop`, `hook.sh on_user_prompt_submit`); `stop.sh` is a backward-compat shim that forwards to `hook.sh on_stop`.
 - **`core/agent_hass_hook.py`** — main pipeline (read stdin, disable check, breaker, HA call, log)
 - **`core/{config,ha_client,circuit_breaker,logger}.py`** — single-responsibility modules
 
