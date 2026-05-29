@@ -1,35 +1,36 @@
-# Copy this to ~/.config/agent-hass-hook/config.toml and edit.
-# Run install.sh for interactive setup instead of editing by hand.
+# agent-hass-hook configuration.
+# Each [[on_<event>]] table is a list of HA service calls for that event.
+# Supported events (Claude Code): on_stop, on_user_prompt_submit.
 
 [ha]
-url = "http://192.168.1.100:8123"
-# Long-lived access token from HA: Profile -> Security -> Long-Lived Access Tokens
-token = "REPLACE_WITH_YOUR_HA_TOKEN"
-# Set to false for self-signed certs.
+url = "REPLACE_URL"
+token = "REPLACE_TOKEN"
 verify_ssl = true
 
-# Timeouts in milliseconds. Defaults shown.
 [timeouts]
 connect_ms = 300
 read_ms = 2000
 
-# Circuit breaker: skip HA calls for `open_duration_sec` after `failure_threshold`
-# consecutive failures. Prevents HA outages from slowing Claude Code's responsiveness.
 [circuit_breaker]
 failure_threshold = 3
 open_duration_sec = 300
 
-# Actions to run when Claude Code's Stop event fires. Array of HA service calls.
-# Add more entries (each starting with [[on_stop]]) to fire multiple actions.
+# --- Preset A (default): off while working, on when done ---
+[[on_user_prompt_submit]]
+service = "light.turn_off"
+data = { entity_id = "light.example" }
+
 [[on_stop]]
 service = "light.turn_on"
-data = { entity_id = "light.xiaomi_monitor_lamp_REPLACE" }
+data = { entity_id = "light.example" }
 
-# Examples for inspiration (uncomment and edit):
+# --- DIY examples (uncomment / adapt) ---
+# Multiple actions per event — just repeat the table:
 # [[on_stop]]
-# service = "notify.mobile_app_my_phone"
-# data = { title = "Claude finished", message = "Task complete" }
+# service = "light.turn_on"
+# data = { entity_id = "light.desk", color_temp_kelvin = 6500, brightness_pct = 100 }
 #
+# Call any HA service, e.g. a script that blinks:
 # [[on_stop]]
-# service = "script.celebrate"
-# data = {}
+# service = "script.turn_on"
+# data = { entity_id = "script.cc_blink" }

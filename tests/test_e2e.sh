@@ -100,5 +100,39 @@ pass "scenario 3: marker file blocks HA call and logs reason"
 grep -q '"result":"ok"' "$WORKDIR/state/hook.log" || fail "scenario 4: log missing success entry"
 pass "scenario 4: success entries written to log"
 
+# --- 7. Scenario: UserPromptSubmit turns the light OFF
+# Rewrite the config with both events, then invoke hook.sh with the event arg.
+cat > "$WORKDIR/config/config.toml" <<EOF
+[ha]
+url = "http://127.0.0.1:$MOCK_PORT"
+token = "test-token"
+verify_ssl = true
+
+[timeouts]
+connect_ms = 500
+read_ms = 2000
+
+[circuit_breaker]
+failure_threshold = 3
+open_duration_sec = 300
+
+[[on_user_prompt_submit]]
+service = "light.turn_off"
+data = { entity_id = "light.test_e2e" }
+
+[[on_stop]]
+service = "light.turn_on"
+data = { entity_id = "light.test_e2e" }
+EOF
+
+rm -f "$WORKDIR/last_request.json"
+echo "{\"cwd\":\"$WORKDIR/proj\",\"session_id\":\"s5\"}" | \
+    "$REPO/adapters/claude-code/hook.sh" on_user_prompt_submit
+
+[[ -f "$WORKDIR/last_request.json" ]] || fail "scenario 5: no request hit mock HA"
+got=$(python3 -c "import json;print(json.load(open('$WORKDIR/last_request.json'))['path'])")
+[[ "$got" == "/api/services/light/turn_off" ]] || fail "scenario 5: bad path: $got"
+pass "scenario 5: UserPromptSubmit calls light.turn_off"
+
 echo
 echo "All e2e scenarios passed."

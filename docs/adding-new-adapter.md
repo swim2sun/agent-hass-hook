@@ -8,7 +8,7 @@ The `core/` Python pipeline is AI-tool-agnostic. To support a new tool, create a
 2. **Implement the entry script** (typically Bash) that the tool's hook system will invoke. The script must:
    - Respect `AGENT_HASS_HOOK_DISABLE=1` (exit 0 fast)
    - Pass stdin through unchanged (the core reads JSON from stdin)
-   - Exec `python3 -m core.agent_hass_hook <event_name>` with `<event_name>` being one of: `on_stop`, `on_subagent_stop`, `on_notification`, etc. (Only `on_stop` is wired up in the MVP.)
+   - Exec `python3 -m core.agent_hass_hook <event_key>` with `<event_key>` being the config-event key, e.g. `on_stop` or `on_user_prompt_submit`. The core dispatches whatever `[[on_<event>]]` table the user configured; an event with no configured actions is a silent no-op. The reference adapter `hook.sh` takes the event key as its first argument, so one script serves every event.
 3. **Document how to register the hook** in the tool's settings (e.g., a settings.json snippet for Cursor).
 
 ## Stdin contract
@@ -21,11 +21,11 @@ The core reads JSON from stdin and looks for these fields (all optional):
 | `session_id` | string | Future: per-session deduplication |
 | `last_assistant_message` | string | Future: semantic detection (error keywords, etc.) |
 
-If the tool's native payload uses different names, the adapter is the right place to normalize them (e.g., `jq` to re-shape JSON before exec).
+If the tool's native payload uses different names, the adapter is the right place to normalize them. The example below uses `jq` for brevity, but the core itself has no jq dependency — any approach that reshapes the JSON (including a small Python one-liner) works.
 
 ## Example: Claude Code (reference implementation)
 
-See `adapters/claude-code/stop.sh`. Claude Code's native Stop payload already includes `cwd`, so we pass it through unchanged.
+See `adapters/claude-code/hook.sh` — a generic dispatcher invoked as `hook.sh <event_key>` (e.g. `hook.sh on_stop`, `hook.sh on_user_prompt_submit`). Claude Code's native payloads already include `cwd`, so we pass stdin through unchanged. `adapters/claude-code/stop.sh` is a thin backward-compat shim that calls `hook.sh on_stop`. The installer registers each event the chosen preset needs, mapping Claude Code's event names to config keys (`Stop` → `on_stop`, `UserPromptSubmit` → `on_user_prompt_submit`).
 
 ## Example: hypothetical Cursor adapter
 
