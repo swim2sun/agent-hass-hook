@@ -205,6 +205,9 @@ class TestMain(unittest.TestCase):
                 rc = main(["on_user_prompt_submit"], stdin, {}, paths)
             self.assertEqual(rc, 0)
             self.assertIsNone(srv.last_path)  # HA never called
+            # No-op events must not even create breaker state (early return
+            # happens before the CircuitBreaker is constructed).
+            self.assertFalse((tmp / "state" / "breaker.json").exists())
 
     def test_breaker_shared_across_events(self):
         with tempfile.TemporaryDirectory() as d:
