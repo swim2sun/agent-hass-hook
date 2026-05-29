@@ -67,6 +67,24 @@ data = {{ entity_id = "{entity}" }}
     return cfg
 
 
+def write_cfg_multi(d: Path, ha_url: str, entity="light.test"):
+    cfg = d / "config.toml"
+    cfg.write_text(f"""
+[ha]
+url = "{ha_url}"
+token = "tok"
+
+[[on_user_prompt_submit]]
+service = "light.turn_off"
+data = {{ entity_id = "{entity}" }}
+
+[[on_stop]]
+service = "light.turn_on"
+data = {{ entity_id = "{entity}" }}
+""")
+    return cfg
+
+
 def make_paths(tmp: Path, ha_url: str):
     cfg = write_cfg(tmp, ha_url)
     return Paths(
@@ -162,6 +180,42 @@ class TestMain(unittest.TestCase):
                 stdin = json.dumps({"cwd": str(tmp)})
                 for _ in range(3):
                     main(["on_stop"], stdin, {}, paths)
+            state = json.loads((tmp / "state" / "breaker.json").read_text())
+            self.assertEqual(state["consecutive_failures"], 3)
+            self.assertIsNotNone(state["tripped_at"])
+
+
+    def test_user_prompt_submit_calls_turn_off(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock_ha() as (url, srv):
+                write_cfg_multi(tmp, url)
+                paths = Paths(config_path=tmp / "config.toml", state_dir=tmp / "state")
+                stdin = json.dumps({"cwd": str(tmp)})
+                rc = main(["on_user_prompt_submit"], stdin, {}, paths)
+            self.assertEqual(rc, 0)
+            self.assertEqual(srv.last_path, "/api/services/light/turn_off")
+
+    def test_event_with_no_actions_is_noop(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock_ha() as (url, srv):
+                paths = make_paths(tmp, url)  # writes only [[on_stop]]
+                stdin = json.dumps({"cwd": str(tmp)})
+                rc = main(["on_user_prompt_submit"], stdin, {}, paths)
+            self.assertEqual(rc, 0)
+            self.assertIsNone(srv.last_path)  # HA never called
+
+    def test_breaker_shared_across_events(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock_ha(status=500) as (url, _):
+                write_cfg_multi(tmp, url)
+                paths = Paths(config_path=tmp / "config.toml", state_dir=tmp / "state")
+                stdin = json.dumps({"cwd": str(tmp)})
+                main(["on_user_prompt_submit"], stdin, {}, paths)  # failure 1
+                main(["on_stop"], stdin, {}, paths)                # failure 2
+                main(["on_user_prompt_submit"], stdin, {}, paths)  # failure 3 -> trips
             state = json.loads((tmp / "state" / "breaker.json").read_text())
             self.assertEqual(state["consecutive_failures"], 3)
             self.assertIsNotNone(state["tripped_at"])

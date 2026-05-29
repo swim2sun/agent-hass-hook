@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+EVENT_PREFIX = "on_"
+
+
 class ConfigError(Exception):
     """Raised when configuration is missing, malformed, or invalid."""
 
@@ -46,11 +49,28 @@ class Config:
     ha: HAConfig
     timeouts: Timeouts
     breaker: BreakerConfig
-    on_stop: list[Action]
+    events: dict[str, list[Action]]
 
 
 def _env_bool(value: str) -> bool:
     return value.strip().lower() not in ("false", "0", "no", "off", "")
+
+
+def _parse_actions(key: str, raw_list: list) -> list[Action]:
+    actions: list[Action] = []
+    for idx, entry in enumerate(raw_list):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"[[{key}]] entry {idx} must be a table")
+        service = entry.get("service")
+        if not service or not isinstance(service, str) or "." not in service:
+            raise ConfigError(
+                f"[[{key}]] entry {idx}: 'service' must be 'domain.service' (e.g. 'light.turn_on')"
+            )
+        data = entry.get("data", {})
+        if not isinstance(data, dict):
+            raise ConfigError(f"[[{key}]] entry {idx}: 'data' must be a table")
+        actions.append(Action(service=service, data=dict(data)))
+    return actions
 
 
 def load_config(path: Path) -> Config:
@@ -99,22 +119,20 @@ def load_config(path: Path) -> Config:
         open_duration_sec=int(b_raw.get("open_duration_sec", 300)),
     )
 
-    on_stop_raw = raw.get("on_stop")
-    if not on_stop_raw or not isinstance(on_stop_raw, list):
-        raise ConfigError("[[on_stop]] requires at least one entry")
+    events: dict[str, list[Action]] = {}
+    for key, val in raw.items():
+        if not key.startswith(EVENT_PREFIX):
+            continue
+        if not isinstance(val, list):
+            raise ConfigError(f"[[{key}]] must be an array of tables")
+        actions = _parse_actions(key, val)
+        if actions:
+            events[key] = actions
 
-    actions: list[Action] = []
-    for idx, entry in enumerate(on_stop_raw):
-        if not isinstance(entry, dict):
-            raise ConfigError(f"[[on_stop]] entry {idx} must be a table")
-        service = entry.get("service")
-        if not service or not isinstance(service, str) or "." not in service:
-            raise ConfigError(
-                f"[[on_stop]] entry {idx}: 'service' must be 'domain.service' (e.g. 'light.turn_on')"
-            )
-        data = entry.get("data", {})
-        if not isinstance(data, dict):
-            raise ConfigError(f"[[on_stop]] entry {idx}: 'data' must be a table")
-        actions.append(Action(service=service, data=dict(data)))
+    if not events:
+        raise ConfigError(
+            "at least one [[on_<event>]] table with an action is required "
+            "(e.g. [[on_stop]] with service = \"light.turn_on\")"
+        )
 
-    return Config(ha=ha, timeouts=timeouts, breaker=breaker, on_stop=actions)
+    return Config(ha=ha, timeouts=timeouts, breaker=breaker, events=events)

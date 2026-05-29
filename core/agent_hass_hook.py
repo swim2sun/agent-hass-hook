@@ -110,6 +110,10 @@ def main(
             else:
                 os.environ[k] = old
 
+    actions = cfg.events.get(event, [])
+    if not actions:
+        return 0  # no actions configured for this event — silent no-op
+
     breaker = CircuitBreaker(
         state_path=paths.breaker_path,
         failure_threshold=cfg.breaker.failure_threshold,
@@ -120,7 +124,7 @@ def main(
         return 0
 
     any_failure = False
-    for action in cfg.on_stop:
+    for action in actions:
         t_start = time.monotonic()
         result = call_service(
             cfg.ha.url, cfg.ha.token, action.service, action.data,

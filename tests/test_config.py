@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.config import load_config, ConfigError
+from core.config import load_config, ConfigError, Action
 
 
 def write_config(content: str) -> Path:
@@ -36,6 +36,64 @@ data = { entity_id = "light.test" }
 
 class TestConfigLoad(unittest.TestCase):
 
+    def _write_and_load(self, text):
+        import tempfile
+        from pathlib import Path
+        d = tempfile.mkdtemp()
+        p = Path(d) / "config.toml"
+        p.write_text(text)
+        return load_config(p)
+
+    def test_parses_multiple_event_tables(self):
+        cfg = self._write_and_load("""
+[ha]
+url = "http://h:8123"
+token = "t"
+
+[[on_user_prompt_submit]]
+service = "light.turn_off"
+data = { entity_id = "light.x" }
+
+[[on_stop]]
+service = "light.turn_on"
+data = { entity_id = "light.x" }
+""")
+        self.assertEqual(set(cfg.events), {"on_user_prompt_submit", "on_stop"})
+        self.assertEqual(cfg.events["on_stop"], [Action("light.turn_on", {"entity_id": "light.x"})])
+        self.assertEqual(cfg.events["on_user_prompt_submit"][0].service, "light.turn_off")
+
+    def test_on_stop_only_still_works(self):
+        cfg = self._write_and_load("""
+[ha]
+url = "http://h:8123"
+token = "t"
+
+[[on_stop]]
+service = "light.turn_on"
+data = { entity_id = "light.x" }
+""")
+        self.assertEqual(set(cfg.events), {"on_stop"})
+
+    def test_unknown_event_table_is_parsed(self):
+        cfg = self._write_and_load("""
+[ha]
+url = "http://h:8123"
+token = "t"
+
+[[on_notification]]
+service = "light.toggle"
+data = {}
+""")
+        self.assertIn("on_notification", cfg.events)
+
+    def test_no_event_tables_raises(self):
+        with self.assertRaises(ConfigError):
+            self._write_and_load("""
+[ha]
+url = "http://h:8123"
+token = "t"
+""")
+
     def test_valid_config_loads(self):
         p = write_config(VALID)
         cfg = load_config(p)
@@ -46,9 +104,9 @@ class TestConfigLoad(unittest.TestCase):
         self.assertEqual(cfg.timeouts.read_ms, 2000)
         self.assertEqual(cfg.breaker.failure_threshold, 3)
         self.assertEqual(cfg.breaker.open_duration_sec, 300)
-        self.assertEqual(len(cfg.on_stop), 1)
-        self.assertEqual(cfg.on_stop[0].service, "light.turn_on")
-        self.assertEqual(cfg.on_stop[0].data, {"entity_id": "light.test"})
+        self.assertEqual(len(cfg.events["on_stop"]), 1)
+        self.assertEqual(cfg.events["on_stop"][0].service, "light.turn_on")
+        self.assertEqual(cfg.events["on_stop"][0].data, {"entity_id": "light.test"})
 
     def test_missing_file_raises(self):
         with self.assertRaises(ConfigError) as ctx:
