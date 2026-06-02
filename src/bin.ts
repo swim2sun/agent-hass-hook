@@ -25,8 +25,12 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === "uninstall") {
     const { readSettings, removeOurHooks, writeSettings } = await import("./settings.ts");
     const settingsPath = `${process.env.HOME}/.claude/settings.json`;
-    writeSettings(settingsPath, removeOurHooks(readSettings(settingsPath)));
-    process.stdout.write("agent-hass-hook: removed hooks from settings.json\n");
+    try {
+      writeSettings(settingsPath, removeOurHooks(readSettings(settingsPath)));
+      process.stdout.write("agent-hass-hook: removed hooks from settings.json\n");
+    } catch (e) {
+      process.stderr.write(`agent-hass-hook: ${(e as Error).message}\n`);
+    }
     return 0;
   }
 

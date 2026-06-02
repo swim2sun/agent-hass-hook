@@ -12,7 +12,9 @@ interface Settings { hooks?: Record<string, HookEntry[]>; [k: string]: unknown; 
 
 function ourCommand(cmd: string | undefined): boolean {
   const c = cmd ?? "";
-  return c.includes("agent-hass-hook") && (c.includes("/bin.js") || c.includes("hook.sh") || c.includes("stop.sh"));
+  return c.includes("agent-hass-hook")
+    && /\bon_[a-z_]+/.test(c)
+    && (c.includes("bin.js") || c.includes("hook.sh") || c.includes("stop.sh"));
 }
 
 export function registerEvents(settings: Settings, events: string[], binPath: string): Settings {
@@ -20,7 +22,7 @@ export function registerEvents(settings: Settings, events: string[], binPath: st
   for (const ev of events) {
     const claude = EVENT_MAP[ev];
     if (!claude) continue;
-    const cmd = `node ${binPath} hook ${ev}`;
+    const cmd = `node "${binPath}" hook ${ev}`;
     const arr = hooks[claude] ?? (hooks[claude] = []);
     const existing = arr.flatMap((e) => (e.hooks ?? []).map((h) => h.command));
     if (!existing.includes(cmd)) {
@@ -47,7 +49,12 @@ export function removeOurHooks(settings: Settings): Settings {
 
 export function readSettings(path: string): Settings {
   if (!existsSync(path)) return {};
-  return JSON.parse(readFileSync(path, "utf-8"));
+  const text = readFileSync(path, "utf-8");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`settings.json at ${path} is not valid JSON; refusing to modify it`);
+  }
 }
 
 export function writeSettings(path: string, settings: Settings, backup = true): void {

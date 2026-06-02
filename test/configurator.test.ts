@@ -18,6 +18,14 @@ test("parseLights picks light.* and reports color_temp support", () => {
   assert.equal(lights[1].supportsColorTemp, false);
 });
 
+test("parseLights guards non-array supported_color_modes (no throw, false)", () => {
+  const lights = parseLights([
+    { entity_id: "light.weird", state: "on", attributes: { friendly_name: "Weird", supported_color_modes: "color_temp" } },
+  ]);
+  assert.equal(lights.length, 1);
+  assert.equal(lights[0].supportsColorTemp, false);
+});
+
 test("renderConfigJson builds full config object for preset A", () => {
   const cfg = renderConfigJson({ url: "http://h:8123/", token: "tok", entity: "light.desk", preset: "A" });
   assert.equal(cfg.ha.url, "http://h:8123/");

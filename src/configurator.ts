@@ -24,7 +24,7 @@ export function parseLights(states: unknown[]): LightRow[] {
       entityId: s.entity_id,
       state: s.state ?? "",
       friendlyName: a.friendly_name ?? "",
-      supportsColorTemp: (a.supported_color_modes ?? []).includes("color_temp"),
+      supportsColorTemp: Array.isArray(a.supported_color_modes) && a.supported_color_modes.includes("color_temp"),
       warmKelvin: a.min_color_temp_kelvin ?? 2700,
       coolKelvin: a.max_color_temp_kelvin ?? 6500,
     });
