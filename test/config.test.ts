@@ -60,6 +60,14 @@ test("action service must be domain.service", () => {
   );
 });
 
+test("non-numeric timeout throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ha: valid.ha, events: valid.events, timeouts: { connect_ms: "fast" } }), {}), ConfigError);
+});
+
+test("non-numeric breaker value throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ha: valid.ha, events: valid.events, circuit_breaker: { failure_threshold: "lots" } }), {}), ConfigError);
+});
+
 test("malformed JSON throws ConfigError", () => {
   const dir = mkdtempSync(join(tmpdir(), "ahh-"));
   const p = join(dir, "config.json");

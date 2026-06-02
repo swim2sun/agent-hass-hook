@@ -23,6 +23,13 @@ function envBool(value: string): boolean {
   return !["false", "0", "no", "off", ""].includes(value.trim().toLowerCase());
 }
 
+function num(key: string, raw: unknown, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) throw new ConfigError(`${key} must be a number, got ${JSON.stringify(raw)}`);
+  return n;
+}
+
 function parseActions(key: string, raw: unknown): Action[] {
   if (!Array.isArray(raw)) throw new ConfigError(`events.${key} must be an array`);
   return raw.map((entry, idx) => {
@@ -65,14 +72,14 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv): Config {
 
   const tRaw = isObject(raw.timeouts) ? raw.timeouts : {};
   const timeouts: Timeouts = {
-    connectMs: Number(tRaw.connect_ms ?? 300),
-    readMs: Number(tRaw.read_ms ?? 2000),
+    connectMs: num("timeouts.connect_ms", tRaw.connect_ms, 300),
+    readMs: num("timeouts.read_ms", tRaw.read_ms, 2000),
   };
 
   const bRaw = isObject(raw.circuit_breaker) ? raw.circuit_breaker : {};
   const breaker: BreakerConfig = {
-    failureThreshold: Number(bRaw.failure_threshold ?? 3),
-    openDurationSec: Number(bRaw.open_duration_sec ?? 300),
+    failureThreshold: num("circuit_breaker.failure_threshold", bRaw.failure_threshold, 3),
+    openDurationSec: num("circuit_breaker.open_duration_sec", bRaw.open_duration_sec, 300),
   };
 
   const eventsRaw = raw.events;
