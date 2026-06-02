@@ -13,3 +13,6 @@ venv/
 config.toml
 *.token
 .env
+
+node_modules/
+dist/

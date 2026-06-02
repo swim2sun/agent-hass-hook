@@ -1,0 +1,23 @@
+{
+  "name": "@swim2sun/agent-hass-hook",
+  "version": "0.1.0",
+  "description": "Drive Home Assistant from Claude Code lifecycle hooks (Stop / UserPromptSubmit).",
+  "type": "module",
+  "bin": { "agent-hass-hook": "dist/bin.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  },
+  "license": "MIT"
+}
