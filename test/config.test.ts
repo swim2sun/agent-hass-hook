@@ -60,6 +60,19 @@ test("action service must be domain.service", () => {
   );
 });
 
+test("non-http(s) url scheme throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ha: { url: "ftp://x/", token: "t" }, events: valid.events }), {}), ConfigError);
+});
+
+test("unparseable url throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ha: { url: "not a url", token: "t" }, events: valid.events }), {}), ConfigError);
+});
+
+test("https url loads", () => {
+  const cfg = loadConfig(writeCfg({ ha: { url: "https://h:8123/", token: "t" }, events: valid.events }), {});
+  assert.equal(cfg.ha.url, "https://h:8123/");
+});
+
 test("non-numeric timeout throws ConfigError", () => {
   assert.throws(() => loadConfig(writeCfg({ ha: valid.ha, events: valid.events, timeouts: { connect_ms: "fast" } }), {}), ConfigError);
 });

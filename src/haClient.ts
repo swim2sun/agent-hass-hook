@@ -57,8 +57,8 @@ export function callService(
 
     const reqFn = isHttps ? httpsRequest : httpRequest;
     const req = reqFn(options, (res) => {
-      // switch to the read timeout once connected
-      req.setTimeout(t.readMs, () => done({ ok: false, error: "timeout" }));
+      // read timeout is armed in the socket "connect" handler, which always
+      // precedes any response — no need to re-arm it here.
       res.on("data", () => { /* drain */ });
       res.on("end", () => {
         const status = res.statusCode ?? 0;

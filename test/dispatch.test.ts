@@ -69,3 +69,14 @@ test("config error logged, returns 0", async () => {
   assert.equal(code, 0);
   assert.ok(readFileSync(join(dir, "hook.log"), "utf-8").includes("config_error"));
 });
+
+test("malformed ha.url (ftp scheme) resolves to 0 and logs an error, never throws", async () => {
+  const dir = tmp();
+  const cfg = join(dir, "config.json");
+  writeFileSync(cfg, JSON.stringify({ ha: { url: "ftp://example.com/", token: "t" }, events: { on_stop: [{ service: "light.turn_on", data: {} }] } }));
+  const code = await runHook("on_stop", "", {}, paths(dir, cfg));
+  assert.equal(code, 0);
+  const log = readFileSync(join(dir, "hook.log"), "utf-8");
+  assert.ok(log.includes('"result":"failed"'));
+  assert.ok(log.includes("error"));
+});

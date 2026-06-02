@@ -64,6 +64,15 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv): Config {
 
   const url = env.AGENT_HASS_HOOK_HA_URL || (haRaw.url as string | undefined);
   if (!url) throw new ConfigError("ha.url is required (or set AGENT_HASS_HOOK_HA_URL)");
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new ConfigError(`ha.url is not a valid URL: ${JSON.stringify(url)}`);
+  }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new ConfigError(`ha.url must use http or https scheme, got ${JSON.stringify(url)}`);
+  }
   const token = env.AGENT_HASS_HOOK_HA_TOKEN || (haRaw.token as string | undefined);
   if (!token) throw new ConfigError("ha.token is required (or set AGENT_HASS_HOOK_HA_TOKEN)");
 

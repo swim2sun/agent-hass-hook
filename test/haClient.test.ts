@@ -46,7 +46,7 @@ test("connection refused → connection_error", async () => {
   // port 1 is reserved / not listening
   const r = await callService("http://127.0.0.1:1", "tok", "light.turn_on", {}, { connectMs: 300, readMs: 2000 });
   assert.equal(r.ok, false);
-  assert.ok(r.error === "connection_error" || r.error === "timeout");
+  assert.equal(r.error, "connection_error");
 });
 
 test("preserves reverse-proxy path prefix", async () => {

@@ -68,11 +68,18 @@ export async function runHook(
 
   let anyFailure = false;
   for (const action of actions) {
-    const r = await callService(cfg.ha.url, cfg.ha.token, action.service, action.data, {
-      connectMs: cfg.timeouts.connectMs,
-      readMs: cfg.timeouts.readMs,
-      verifySsl: cfg.ha.verifySsl,
-    });
+    let r;
+    try {
+      r = await callService(cfg.ha.url, cfg.ha.token, action.service, action.data, {
+        connectMs: cfg.timeouts.connectMs,
+        readMs: cfg.timeouts.readMs,
+        verifySsl: cfg.ha.verifySsl,
+      });
+    } catch (e) {
+      anyFailure = true;
+      logger.log({ event, cwd, result: "failed", service: action.service, error: "call_error", detail: String((e as Error).message ?? e) });
+      continue;
+    }
     if (r.ok) {
       logger.log({ event, cwd, result: "ok", service: action.service, status: r.status, duration_ms: r.durationMs });
     } else {
