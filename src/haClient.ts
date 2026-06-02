@@ -28,7 +28,7 @@ export function callService(
   }
   const isHttps = parsed.protocol === "https:";
   const prefix = parsed.pathname.replace(/\/+$/, "");
-  const path = `${prefix}/api/services/${domain}/${svc}`;
+  const path = `${prefix}/api/services/${encodeURIComponent(domain)}/${encodeURIComponent(svc)}`;
   const body = Buffer.from(JSON.stringify(data), "utf-8");
 
   const options: RequestOptions = {

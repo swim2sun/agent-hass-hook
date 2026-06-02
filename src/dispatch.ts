@@ -28,8 +28,32 @@ export async function runHook(
 ): Promise<number> {
   if (env.AGENT_HASS_HOOK_DISABLE === "1") return 0;
 
-  const logger = new HookLogger(paths.logPath);
+  let logger: HookLogger;
+  try {
+    logger = new HookLogger(paths.logPath);
+  } catch (e) {
+    process.stderr.write(`agent-hass-hook: cannot initialize state (${String((e as Error).message ?? e)})\n`);
+    return 0;
+  }
 
+  try {
+    return await runHookBody(event, stdinText, env, paths, logger);
+  } catch (e) {
+    // ConfigError is already handled (logged + returns 0) inside runHookBody, so
+    // anything reaching here is an unexpected/catastrophic failure (e.g. breaker
+    // state dir unwritable). Emit one concise line instead of a stack and exit 0.
+    process.stderr.write(`agent-hass-hook: cannot initialize state (${String((e as Error).message ?? e)})\n`);
+    return 0;
+  }
+}
+
+async function runHookBody(
+  event: string,
+  stdinText: string,
+  env: NodeJS.ProcessEnv,
+  paths: Paths,
+  logger: HookLogger,
+): Promise<number> {
   let payload: Record<string, unknown> = {};
   if (stdinText.trim()) {
     try {
