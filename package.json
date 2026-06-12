@@ -6,6 +6,7 @@
   "bin": { "agent-hass-hook": "dist/bin.js" },
   "files": ["dist"],
   "engines": { "node": ">=18" },
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test test/*.test.ts",
