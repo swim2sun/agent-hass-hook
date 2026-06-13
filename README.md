@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/swim2sun/agent-hass-hook/main/assets/logo.png" alt="agent-hass-hook logo" width="180" height="180">
+</p>
+
 # agent-hass-hook
 
 Make Home Assistant your physical-world notification channel for AI coding agents. When Claude Code finishes a task, your light turns on (or any HA service runs).
