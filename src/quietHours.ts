@@ -9,6 +9,7 @@ export function isWithinQuietHours(
   now: Date,
   windows: QuietWindow[],
 ): { active: boolean; window?: string } {
+  // Deliberately local wall-clock time (no UTC/DST normalization) — per design: windows are evaluated in the machine's local timezone.
   const m = now.getHours() * 60 + now.getMinutes();
   for (const w of windows) {
     const start = toMinutes(w.start);

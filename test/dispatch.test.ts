@@ -39,7 +39,7 @@ test("within quiet hours: skips, logs reason, no HA call, no breaker file", asyn
   writeFileSync(cfg, JSON.stringify({
     ha: { url: ha.url, token: "t" },
     events: { on_stop: [{ service: "light.turn_on", data: { entity_id: "light.x" } }] },
-    quiet_hours: [{ start: hhmm(nowMin - 1), end: hhmm(nowMin + 1) }],
+    quiet_hours: [{ start: hhmm(nowMin - 2), end: hhmm(nowMin + 2) }],
   }));
   const code = await runHook("on_stop", "", {}, paths(dir, cfg));
   ha.close();
