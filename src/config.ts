@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { QuietWindow } from "./quietHours.ts";
 
 export class ConfigError extends Error {}
 
@@ -11,6 +12,30 @@ export interface Config {
   timeouts: Timeouts;
   breaker: BreakerConfig;
   events: Record<string, Action[]>;
+  quietHours: QuietWindow[];
+}
+
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
+function validateHHMM(key: string, raw: unknown): string {
+  if (typeof raw !== "string" || !HHMM_RE.test(raw)) {
+    throw new ConfigError(`${key} must be a "HH:MM" string, got ${JSON.stringify(raw)}`);
+  }
+  const [h, m] = raw.split(":").map(Number);
+  if (h > 23 || m > 59) throw new ConfigError(`${key} is out of range (00:00–23:59), got ${JSON.stringify(raw)}`);
+  return raw;
+}
+
+function parseQuietHours(raw: unknown): QuietWindow[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) throw new ConfigError("quiet_hours must be an array");
+  return raw.map((entry, idx) => {
+    if (!isObject(entry)) throw new ConfigError(`quiet_hours[${idx}] must be an object`);
+    return {
+      start: validateHHMM(`quiet_hours[${idx}].start`, entry.start),
+      end: validateHHMM(`quiet_hours[${idx}].end`, entry.end),
+    };
+  });
 }
 
 const EVENT_PREFIX = "on_";
@@ -103,5 +128,7 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv): Config {
     throw new ConfigError('at least one events.on_<event> with an action is required (e.g. events.on_stop)');
   }
 
-  return { ha: { url, token, verifySsl }, timeouts, breaker, events };
+  const quietHours = parseQuietHours(raw.quiet_hours);
+
+  return { ha: { url, token, verifySsl }, timeouts, breaker, events, quietHours };
 }

@@ -5,6 +5,7 @@ import { loadConfig, ConfigError } from "./config.ts";
 import { CircuitBreaker } from "./circuitBreaker.ts";
 import { HookLogger } from "./logger.ts";
 import { callService } from "./haClient.ts";
+import { isWithinQuietHours } from "./quietHours.ts";
 
 function findDisableMarker(start: string): string | null {
   let current = resolve(start);
@@ -83,6 +84,12 @@ async function runHookBody(
 
   const actions = cfg.events[event] ?? [];
   if (actions.length === 0) return 0; // silent no-op, no breaker file
+
+  const q = isWithinQuietHours(new Date(), cfg.quietHours);
+  if (q.active) {
+    logger.log({ event, cwd, result: "skipped", reason: "quiet_hours", window: q.window });
+    return 0;
+  }
 
   const breaker = new CircuitBreaker(paths.breakerPath, cfg.breaker.failureThreshold, cfg.breaker.openDurationSec);
   if (breaker.shouldSkip()) {

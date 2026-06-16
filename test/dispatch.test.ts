@@ -23,6 +23,49 @@ async function mockHA(status = 200): Promise<{ url: string; calls: string[]; clo
   });
 }
 
+function hhmm(minOfDay: number): string {
+  const m = ((minOfDay % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+test("within quiet hours: skips, logs reason, no HA call, no breaker file", async () => {
+  const dir = tmp();
+  const ha = await mockHA(200);
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const cfg = join(dir, "config.json");
+  writeFileSync(cfg, JSON.stringify({
+    ha: { url: ha.url, token: "t" },
+    events: { on_stop: [{ service: "light.turn_on", data: { entity_id: "light.x" } }] },
+    quiet_hours: [{ start: hhmm(nowMin - 2), end: hhmm(nowMin + 2) }],
+  }));
+  const code = await runHook("on_stop", "", {}, paths(dir, cfg));
+  ha.close();
+  assert.equal(code, 0);
+  assert.deepEqual(ha.calls, []);
+  assert.equal(existsSync(join(dir, "breaker.json")), false);
+  assert.ok(readFileSync(join(dir, "hook.log"), "utf-8").includes('"reason":"quiet_hours"'));
+});
+
+test("outside quiet hours: HA called normally", async () => {
+  const dir = tmp();
+  const ha = await mockHA(200);
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const cfg = join(dir, "config.json");
+  writeFileSync(cfg, JSON.stringify({
+    ha: { url: ha.url, token: "t" },
+    events: { on_stop: [{ service: "light.turn_on", data: { entity_id: "light.x" } }] },
+    quiet_hours: [{ start: hhmm(nowMin + 10), end: hhmm(nowMin + 20) }],
+  }));
+  const code = await runHook("on_stop", "", {}, paths(dir, cfg));
+  ha.close();
+  assert.equal(code, 0);
+  assert.deepEqual(ha.calls, ["/api/services/light/turn_on"]);
+});
+
 test("AGENT_HASS_HOOK_DISABLE=1 exits 0 without calling HA", async () => {
   const dir = tmp();
   const code = await runHook("on_stop", "", { AGENT_HASS_HOOK_DISABLE: "1" }, paths(dir, "/nope.json"));
