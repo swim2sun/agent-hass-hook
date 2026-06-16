@@ -87,3 +87,31 @@ test("malformed JSON throws ConfigError", () => {
   writeFileSync(p, "{ not json");
   assert.throws(() => loadConfig(p, {}), ConfigError);
 });
+
+test("valid quiet_hours parses to quietHours", () => {
+  const cfg = loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "09:00", end: "18:00" }, { start: "22:00", end: "07:00" }] }), {});
+  assert.deepEqual(cfg.quietHours, [{ start: "09:00", end: "18:00" }, { start: "22:00", end: "07:00" }]);
+});
+
+test("missing quiet_hours defaults to []", () => {
+  assert.deepEqual(loadConfig(writeCfg(valid), {}).quietHours, []);
+});
+
+test("non-array quiet_hours throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: { start: "09:00", end: "18:00" } }), {}), ConfigError);
+});
+
+test("quiet_hours entry missing start/end throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "09:00" }] }), {}), ConfigError);
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ end: "18:00" }] }), {}), ConfigError);
+});
+
+test("quiet_hours bad format throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "9:00", end: "18:00" }] }), {}), ConfigError);
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "0900", end: "18:00" }] }), {}), ConfigError);
+});
+
+test("quiet_hours out-of-range throws ConfigError", () => {
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "24:00", end: "18:00" }] }), {}), ConfigError);
+  assert.throws(() => loadConfig(writeCfg({ ...valid, quiet_hours: [{ start: "09:60", end: "18:00" }] }), {}), ConfigError);
+});
