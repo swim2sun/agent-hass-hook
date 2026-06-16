@@ -5,6 +5,7 @@ import { render, type Preset } from "./presets.ts";
 import { registerEvents, readSettings, writeSettings, EVENT_MAP } from "./settings.ts";
 import { writeConfig } from "./configFile.ts";
 import type { Paths } from "./paths.ts";
+import type { QuietWindow } from "./quietHours.ts";
 
 export interface LightRow {
   entityId: string;
@@ -32,9 +33,32 @@ export function parseLights(states: unknown[]): LightRow[] {
   return rows;
 }
 
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
+function validHHMM(s: string): boolean {
+  if (!HHMM_RE.test(s)) return false;
+  const [h, m] = s.split(":").map(Number);
+  return h <= 23 && m <= 59;
+}
+
+// Parse free-text like "09:00-18:00, 22:00-07:00" into quiet windows.
+// Empty/whitespace → []. Throws on a malformed token.
+export function parseQuietHours(input: string): QuietWindow[] {
+  if (!input.trim()) return [];
+  return input.split(",").map((tok) => {
+    const t = tok.trim();
+    const m = t.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    if (!m || !validHHMM(m[1]) || !validHHMM(m[2])) {
+      throw new Error(`Invalid quiet-hours range ${JSON.stringify(t)} (expected "HH:MM-HH:MM")`);
+    }
+    return { start: m[1], end: m[2] };
+  });
+}
+
 export interface RenderArgs {
   url: string; token: string; entity: string; preset: Preset;
   warmKelvin?: number; coolKelvin?: number;
+  quietHours?: QuietWindow[];
 }
 
 export function renderConfigJson(args: RenderArgs): {
@@ -42,14 +66,17 @@ export function renderConfigJson(args: RenderArgs): {
   timeouts: { connect_ms: number; read_ms: number };
   circuit_breaker: { failure_threshold: number; open_duration_sec: number };
   events: Record<string, Array<{ service: string; data: Record<string, any> }>>;
+  quiet_hours?: QuietWindow[];
 } {
   const events = render(args.preset, args.entity, { warmKelvin: args.warmKelvin, coolKelvin: args.coolKelvin });
-  return {
+  const cfg: ReturnType<typeof renderConfigJson> = {
     ha: { url: args.url, token: args.token, verify_ssl: true },
     timeouts: { connect_ms: 300, read_ms: 2000 },
     circuit_breaker: { failure_threshold: 3, open_duration_sec: 300 },
     events,
   };
+  if (args.quietHours && args.quietHours.length) cfg.quiet_hours = args.quietHours;
+  return cfg;
 }
 
 // Absolute path to this package's compiled bin (dist/bin.js).
@@ -117,9 +144,23 @@ export async function runConfigurator(paths: Paths): Promise<number> {
     preset = "A";
   }
 
+  const quietRaw = await p.text({
+    message: "Quiet hours — hook stays silent during these windows (e.g. 09:00-18:00, 22:00-07:00; empty for none)",
+    placeholder: "",
+    defaultValue: "",
+  });
+  if (p.isCancel(quietRaw)) { p.cancel("Aborted."); return 1; }
+  let quietHours: QuietWindow[] = [];
+  try {
+    quietHours = parseQuietHours((quietRaw as string) ?? "");
+  } catch (e) {
+    p.log.warn(`${(e as Error).message} — no quiet hours configured.`);
+  }
+
   const cfg = renderConfigJson({
     url: url as string, token: token as string, entity: chosen, preset,
     warmKelvin: row?.warmKelvin, coolKelvin: row?.coolKelvin,
+    quietHours,
   });
   writeConfig(paths.configPath, cfg);
   p.log.success(`Wrote ${paths.configPath} (chmod 600)`);

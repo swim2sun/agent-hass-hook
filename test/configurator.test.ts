@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseLights, renderConfigJson } from "../src/configurator.ts";
+import { parseLights, renderConfigJson, parseQuietHours } from "../src/configurator.ts";
 
 const states = [
   { entity_id: "light.desk", state: "on", attributes: { friendly_name: "Desk", supported_color_modes: ["color_temp"], min_color_temp_kelvin: 2202, max_color_temp_kelvin: 6535 } },
@@ -39,4 +39,41 @@ test("renderConfigJson preset C carries kelvin", () => {
   const cfg = renderConfigJson({ url: "u", token: "t", entity: "light.desk", preset: "C", warmKelvin: 2200, coolKelvin: 6500 });
   assert.equal(cfg.events.on_stop[0].data.color_temp_kelvin, 6500);
   assert.equal(cfg.events.on_user_prompt_submit[0].data.color_temp_kelvin, 2200);
+});
+
+test("parseQuietHours parses a single range", () => {
+  assert.deepEqual(parseQuietHours("09:00-18:00"), [{ start: "09:00", end: "18:00" }]);
+});
+
+test("parseQuietHours parses multiple comma-separated ranges", () => {
+  assert.deepEqual(parseQuietHours("09:00-18:00, 22:00-07:00"), [
+    { start: "09:00", end: "18:00" },
+    { start: "22:00", end: "07:00" },
+  ]);
+});
+
+test("parseQuietHours empty/whitespace input is []", () => {
+  assert.deepEqual(parseQuietHours(""), []);
+  assert.deepEqual(parseQuietHours("   "), []);
+});
+
+test("parseQuietHours throws on a malformed token", () => {
+  assert.throws(() => parseQuietHours("9:00-18:00"), Error);
+  assert.throws(() => parseQuietHours("09:00 18:00"), Error);
+  assert.throws(() => parseQuietHours("24:00-18:00"), Error);
+});
+
+test("renderConfigJson includes quiet_hours when provided", () => {
+  const cfg = renderConfigJson({
+    url: "u", token: "t", entity: "light.desk", preset: "A",
+    quietHours: [{ start: "09:00", end: "18:00" }],
+  });
+  assert.deepEqual((cfg as any).quiet_hours, [{ start: "09:00", end: "18:00" }]);
+});
+
+test("renderConfigJson omits quiet_hours when empty/absent", () => {
+  const none = renderConfigJson({ url: "u", token: "t", entity: "light.desk", preset: "A" });
+  assert.equal("quiet_hours" in none, false);
+  const empty = renderConfigJson({ url: "u", token: "t", entity: "light.desk", preset: "A", quietHours: [] });
+  assert.equal("quiet_hours" in empty, false);
 });
